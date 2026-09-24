@@ -1,13 +1,13 @@
 ---
 name: codex-chat
-description: Use when a user wants Codex to take a project question or daily planning request to ChatGPT, have ChatGPT inspect the target GitHub repository and create a scoped issue with the GitHub Connector, then have Codex implement it and run an exact-head ChatGPT review, revision, and merge loop.
+description: Use when users want Codex to take a project question to ChatGPT for GitHub-backed planning, and continue through issue creation, implementation, exact-head review, and merge when they explicitly request or have established authorization for the full loop.
 ---
 
 # Codex + ChatGPT Project Loop
 
 Codex owns the task from kickoff through implementation and final reporting. ChatGPT contributes project planning and an independent review through its GitHub Connector. Codex uses the available computer-use interface to carry messages between the two systems and verifies each handoff from visible evidence.
 
-Use this skill when the user asks what a project should work on today, gives Codex a question to take to ChatGPT, or asks to start or continue the Codex + ChatGPT project loop. Treat a request to ask ChatGPT what to do for a named project as a full-cycle kickoff unless the user says to plan only. If the user supplies a specific question, carry that question and its relevant context into the same workflow.
+Use this skill when the user explicitly asks Codex to start or continue the Codex + ChatGPT project loop, asks Codex to carry a question through that loop, or has already established full-cycle authorization for the target project. Treat “start today’s project loop and ask ChatGPT what to work on” as a full-cycle request. A request for a recommendation alone—including “what should we work on today?” without a request to run the loop or standing authorization—is planning-only. Do not infer authority to create issues, change code, push, or merge from a project name or question alone. If the mode is unclear, return the recommendation and ask whether to proceed before the first write. If the user supplies a specific question in a full-cycle request, carry it and its relevant context into the workflow.
 
 ## Roles and boundaries
 
@@ -16,12 +16,12 @@ Use this skill when the user asks what a project should work on today, gives Cod
 - **GitHub Connector:** ChatGPT’s source for repository, issue, and PR state. A generated answer that merely describes repository facts is not proof that the connector was used.
 - **Computer-use interface:** Codex’s transport into the ChatGPT UI. In Codex, use the available `mcp__cua_repl.js` tool and its `cua` API. A prepared prompt is not a sent prompt; a sent prompt is not a completed ChatGPT response.
 
-This skill does not grant access or expand the user’s authorization. Use the target repository named by the user or clearly established by the current task. Ask only when the repository, requested scope, or authorization for a consequential step is genuinely unclear. A planning-only request ends after ChatGPT’s recommendation; it does not create an issue or modify code.
+This skill does not grant access or expand the user’s authorization. Use the target repository named by the user or clearly established by the current task. A planning-only request ends after ChatGPT’s recommendation; it does not create an issue, change code, push, or merge. Ask only when the repository, requested scope, or authorization for a consequential step is genuinely unclear.
 
 ## 1. Establish the project and the run mode
 
 1. Identify the target GitHub repository (`OWNER/REPO`) from the user’s request and the active project context. Confirm the current Git remote when working in a checkout. Do not substitute `atomchung/codex-chat-collab`; that repository is only for skill-level feedback.
-2. Identify whether the user asked for a full cycle or planning only. For a full-cycle kickoff, carry through issue creation, implementation, review, and merge when the normal repository checks and the exact-head review pass. Do not stop for redundant confirmation of steps the user explicitly requested.
+2. Set the run mode before dispatch. A request to start or continue the full project loop, or an established standing authorization for that target project, selects `FULL_CYCLE`; carry through issue creation, implementation, review, and merge when the repository rules and review gates pass. A request for a recommendation or plan alone selects `PLANNING_ONLY`; return ChatGPT’s answer and stop before issue creation, code changes, push, or merge. If neither mode is clear, return the recommendation and ask before the first write. Do not stop for redundant confirmation after the user explicitly selected `FULL_CYCLE`.
 3. Inspect the checkout’s branch, commit, and working tree before changing files. Preserve unrelated work. Gather only the concise context ChatGPT needs; do not send credentials, private personal data, or unrelated local files.
 4. Search this skill’s public issues only when the run reveals a material skill or handoff problem. Search and create product work in the target project repository.
 
@@ -56,7 +56,7 @@ Send the review request through the same verified ChatGPT UI path. Ask ChatGPT t
 - The number of findings returned and an overflow status: `none` or `additional findings remain`, with a concise severity summary if the response is capped.
 - Which CI or rendered evidence ChatGPT actually inspected, and any material limits on the review.
 
-Codex must match the response’s repository, PR URL, and SHA to the requested review before using its verdict. A missing or mismatched response is `CANNOT REVIEW` for that head. Never borrow a verdict from a neighboring request. If more than three findings remain, ask ChatGPT for the next bounded set before treating the review as complete.
+Codex must match the response’s repository, PR URL, and SHA to the requested review before using its verdict. A missing or mismatched response is `CANNOT REVIEW` for that head. Never borrow a verdict from a neighboring request. Whenever the response reports additional findings, ask ChatGPT for the next bounded set for the same repository, PR, and SHA. Continue until ChatGPT explicitly reports that no additional findings remain. If overflow status is missing or unclear, treat the review as incomplete. Do not report review completion or merge while overflow is unresolved or unknown.
 
 Codex independently checks every finding against the exact diff and relevant tests. Explain evidence for rejected findings. Fix valid findings, rerun relevant checks, push the changes, record the new SHA, and request a new review of that head. A verdict for an earlier SHA expires as soon as the PR head changes.
 
@@ -68,10 +68,10 @@ Merge only when all of the following are true:
 
 - The user’s request authorizes the full implementation and merge loop.
 - ChatGPT returned `APPROVE` for the exact current repository, PR URL, and head SHA using the GitHub Connector.
-- Required CI checks are green and no material findings remain unresolved.
+- Review overflow is explicitly clear, no material findings remain unresolved, and all required CI checks are green.
 - The target branch and repository rules permit the merge.
 
-If any condition fails, keep the PR unmerged and state what is missing. After a merge, verify the resulting PR state and merge commit through GitHub. Do not imply deployment or live-client validation from a successful merge.
+Immediately before merging, reread the PR head and required check state. Submit the merge with a head-SHA precondition, such as `gh pr merge <number> --match-head-commit <reviewed SHA>`, GitHub GraphQL `expectedHeadOid`, or an equivalent guarded operation. If the head changed or the precondition is unavailable or rejected, leave the PR unmerged, inspect the new head and checks, and request a new exact-head review; never retry the merge against an unreviewed SHA. If any merge condition fails, keep the PR unmerged and state what is missing. After a successful merge, verify the resulting PR state and merge commit through GitHub. Do not imply deployment or live-client validation from a successful merge.
 
 Report the target issue and PR, the implemented scope, tests run, CI state, ChatGPT’s exact-head verdict, merge state, and any remaining deployment or user-facing validation. Keep local test evidence, GitHub checks, ChatGPT review, merge, deployment, and client validation as separate claims.
 
@@ -85,11 +85,11 @@ Do not record a target product defect here unless it demonstrates a gap in this 
 
 ### Daily project kickoff
 
-> We are working in `<OWNER/REPO>`. Use the GitHub Connector to inspect the repository and its open issues. Find one high-value, in-scope task for today, check for duplicates, and explain the evidence, scope, acceptance criteria, risks, and dependencies. If this is a full-cycle kickoff, create or reuse the issue in this repository and return its URL. Do not claim a connector read or issue write you did not perform.
+> Run mode: `<PLANNING_ONLY or FULL_CYCLE>`. We are working in `<OWNER/REPO>`. Use the GitHub Connector to inspect the repository and its open issues. Find one high-value, in-scope task for today, check for duplicates, and explain the evidence, scope, acceptance criteria, risks, and dependencies. In `PLANNING_ONLY`, return the recommendation without creating an issue. In `FULL_CYCLE`, create or reuse the issue in this repository and return its URL. Do not claim a connector read or issue write you did not perform.
 
 ### User-supplied question
 
-> The user’s question is: `<QUESTION>`. Relevant constraints: `<CONTEXT>`. Use the GitHub Connector to inspect `<OWNER/REPO>` where needed and answer in that project’s context. For a full-cycle request, turn the agreed bounded task into a new or existing issue in this repository and return its URL. State whether the Connector was used.
+> Run mode: `<PLANNING_ONLY or FULL_CYCLE>`. The user’s question is: `<QUESTION>`. Relevant constraints: `<CONTEXT>`. Use the GitHub Connector to inspect `<OWNER/REPO>` where needed and answer in that project’s context. In `PLANNING_ONLY`, return the answer and a short plan without creating an issue. In `FULL_CYCLE`, turn the agreed bounded task into a new or existing issue in this repository and return its URL. State whether the Connector was used.
 
 ### Exact-head PR review
 

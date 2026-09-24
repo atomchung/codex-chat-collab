@@ -15,7 +15,7 @@ A defect in the product being reviewed is out of scope by itself. Record it here
 ## How to record an issue
 
 - Search existing issues first; add a recurrence there when it is the same failure mode.
-- Use the [skill feedback issue form](https://github.com/atomchung/codex-chat-collaboration-log/issues/new/choose). Separate observed facts from cause hypotheses.
+- Use the [skill feedback issue form](https://github.com/atomchung/codex-chat-collab/issues/new/choose). Separate observed facts from cause hypotheses.
 - Identify the Codex behavior, ChatGPT behavior, or handoff that failed; capture expected and actual behavior, impact, corrective action, and verification status.
 - Keep review effectiveness measures descriptive: accepted, rejected, duplicate, missed, and rework signals need context and evidence. Do not treat raw counts as a score.
 - Update the issue when a fix is made and when it is verified.

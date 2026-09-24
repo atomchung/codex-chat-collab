@@ -1,0 +1,96 @@
+name: Codex ↔ ChatGPT skill gap
+description: Record a negative case, recurrence, or missing capability in the Codex and ChatGPT collaboration skill.
+title: "[skill-gap] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public and tracks the collaboration skill itself. Do not include private product data, holdings, credentials, private repository/PR/branch/commit links, internal paths, or raw screenshots/transcripts. Generalize identifying details.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Issue type
+      options:
+        - Observed failure
+        - Recurring failure
+        - Missed or weak finding
+        - Missing workflow capability
+        - Evidence or acceptance gap
+    validations:
+      required: true
+  - type: dropdown
+    id: participant
+    attributes:
+      label: Which part of the collaboration was involved?
+      options:
+        - Codex execution
+        - ChatGPT planning or review
+        - Codex ↔ ChatGPT handoff
+        - Both sides and/or repeated loop
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Collaboration stage
+      options:
+        - Goal and acceptance criteria
+        - Context and evidence handoff
+        - ChatGPT tool availability or invocation
+        - Exact-head GitHub review
+        - Codex verification or fix
+        - ChatGPT reread after a fix
+        - Runtime, UI, or user-facing acceptance
+        - Final report and learning
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: Sanitized observation
+      description: What did Codex do, what did ChatGPT do, and what happened at the handoff? Label each claim as observed or inferred.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and its limits
+      description: State what was directly observed (for example, local result, actual connector call, remote-head check, or rendered artifact) and what remains unverified. Do not paste private identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and recurrence
+      description: Explain the cost, confusion, missed risk, or rework. Link a related public issue if this recurred.
+    validations:
+      required: true
+  - type: textarea
+    id: cause
+    attributes:
+      label: Cause and confidence
+      description: Mark unverified causes as hypotheses.
+  - type: textarea
+    id: action
+    attributes:
+      label: Proposed skill change or next step
+    validations:
+      required: true
+  - type: dropdown
+    id: verification
+    attributes:
+      label: Status
+      options:
+        - Open, not fixed
+        - Change proposed
+        - Fixed, not verified
+        - Verified in a subsequent Codex ↔ ChatGPT loop
+        - Needs private follow-up; details omitted
+    validations:
+      required: true

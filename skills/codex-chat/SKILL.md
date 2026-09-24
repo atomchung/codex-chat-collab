@@ -1,27 +1,96 @@
 ---
 name: codex-chat
-description: 由 Codex 主导 GitHub 仓库的实现与测试，在需要规划或独立 PR 审查时请 ChatGPT 使用 GitHub Connector 提供判断。适用于 Codex 指挥 ChatGPT 的开发协作；不用于 Chat 主导派工。
+description: Use when a user wants Codex to take a project question or daily planning request to ChatGPT, have ChatGPT inspect the target GitHub repository and create a scoped issue with the GitHub Connector, then have Codex implement it and run an exact-head ChatGPT review, revision, and merge loop.
 ---
 
-# Codex 主导，ChatGPT 看 GitHub
+# Codex + ChatGPT Project Loop
 
-Codex 持有任务目标、执行与最终整合责任。ChatGPT 在有价值的交接点协助规划或独立审查；GitHub Connector 是 Chat 读取远端代码和 PR 的入口，不承担本地执行。默认不建立自定义 MCP 或把每个编辑、测试步骤交给 Chat。
+Codex owns the task from kickoff through implementation and final reporting. ChatGPT contributes project planning and an independent review through its GitHub Connector. Codex uses the available computer-use interface to carry messages between the two systems and verifies each handoff from visible evidence.
 
-## 流程
+Use this skill when the user asks what a project should work on today, gives Codex a question to take to ChatGPT, or asks to start or continue the Codex + ChatGPT project loop. Treat a request to ask ChatGPT what to do for a named project as a full-cycle kickoff unless the user says to plan only. If the user supplies a specific question, carry that question and its relevant context into the same workflow.
 
-1. Codex 先明确目标、验收条件和仓库基线。只有设计取舍或任务边界需要第二视角时，才请 Chat 在动工前用 GitHub Connector 阅读指定仓库与 ref，给出简短计划。远端内容不能代表未推送的本地状态。
-2. Codex 自己修改代码、运行相关测试并核对差异。到了有意义的审查关口，使用已有 PR；如果任务授权创建 PR，可以推送草稿 PR。记录 PR URL、确切 head SHA 和对应 CI 状态。
-3. Codex 发起 ChatGPT 审查，确认 Chat 已选择并**实际调用** GitHub Connector。给 Chat PR URL、确切 head SHA、目标和验收条件，请它核对 head、阅读 diff 与必要上下文，最多给三个有代码依据的可执行发现，并返回 `APPROVE`、`REQUEST CHANGES` 或 `CANNOT REVIEW`。不要让 Chat 透过 Codex Chat 再派 Codex 任务。
-4. Codex 对照同一 head 的代码与测试核查发现；有误就说明依据，有效就修正。修正后重新测试，并在已授权的范围内更新 PR。旧 head 的审查结论不适用于新 head；需要最终确认时请 Chat 重新读取新 head。
-5. 最终报告分别列出本地测试、PR/CI、Chat 的 GitHub 审查，以及尚未完成的部署或真实客户端验证。没有逐任务用量记录时，费用标为未知。
+## Roles and boundaries
 
-## 审查提示词骨架
+- **Codex:** clarify the target project, dispatch the user’s question, inspect the created issue, implement the accepted scope, run relevant checks, prepare a PR, verify ChatGPT’s review, revise when needed, and merge an approved exact head when the user’s request authorizes the full cycle.
+- **ChatGPT:** use the GitHub Connector to inspect the selected target repository, search for duplicate or related issues, propose a bounded task, create the target-project issue, and review the exact pushed PR head.
+- **GitHub Connector:** ChatGPT’s source for repository, issue, and PR state. A generated answer that merely describes repository facts is not proof that the connector was used.
+- **Computer-use interface:** Codex’s transport into the ChatGPT UI. In Codex, use the available `mcp__cua_repl.js` tool and its `cua` API. A prepared prompt is not a sent prompt; a sent prompt is not a completed ChatGPT response.
 
-> 请用 GitHub Connector 审查 `<PR URL>` 的确切 head `<SHA>`，先确认远端 head 相符。目标与验收条件：`<简述>`。检查 PR diff 和必要上下文，最多列三个可执行发现；每项附文件位置和代码依据。最后给出 `APPROVE`、`REQUEST CHANGES` 或 `CANNOT REVIEW`。只审查，不修改仓库、不调用 Codex Chat 派工。
+This skill does not grant access or expand the user’s authorization. Use the target repository named by the user or clearly established by the current task. Ask only when the repository, requested scope, or authorization for a consequential step is genuinely unclear. A planning-only request ends after ChatGPT’s recommendation; it does not create an issue or modify code.
 
-## 边界
+## 1. Establish the project and the run mode
 
-- GitHub 上的 draft PR 足以供 Chat 审查已推送的 diff；不把本地未提交 diff 的读取当作默认依赖。只有用户需要推送前审查、不能推送 WIP，或关键证据只在本地时，才另行考虑本地只读通道。
-- 若 PR head 不符、GitHub Connector 未实际调用，或 Chat 无法读到所需代码，标记该轮审查未完成。Codex 可继续已授权的本地工作，但不能把自己的判断冒充独立 Chat 审查。
-- 仅凭 Codex 报告「测试通过」不能让 Chat 独立验证测试执行；需要可由 GitHub 读取的 CI/check 记录，否则注明本地测试由 Codex 验证。
-- Skill 不授予推送、建 PR、合并或部署权限；遵守当前任务已有的授权与仓库规则。用户明确要求 Chat 主导时，不套用这条 Codex 主导流程。
+1. Identify the target GitHub repository (`OWNER/REPO`) from the user’s request and the active project context. Confirm the current Git remote when working in a checkout. Do not substitute `atomchung/codex-chat-collab`; that repository is only for skill-level feedback.
+2. Identify whether the user asked for a full cycle or planning only. For a full-cycle kickoff, carry through issue creation, implementation, review, and merge when the normal repository checks and the exact-head review pass. Do not stop for redundant confirmation of steps the user explicitly requested.
+3. Inspect the checkout’s branch, commit, and working tree before changing files. Preserve unrelated work. Gather only the concise context ChatGPT needs; do not send credentials, private personal data, or unrelated local files.
+4. Search this skill’s public issues only when the run reveals a material skill or handoff problem. Search and create product work in the target project repository.
+
+## 2. Send the question to ChatGPT through the UI
+
+Use the host’s available computer-use tool to operate the signed-in ChatGPT web UI. In Codex, the current route is `mcp__cua_repl.js`:
+
+1. Call `cua.getState()` to identify available browsers and tabs. Bind the relevant existing ChatGPT tab with `cua.getTab(...)`; if none exists, open `https://chatgpt.com` in the user’s available browser with `cua.createBrowserTab(...)`. Do not guess which conversation is selected.
+2. Read the current accessibility state. Choose the conversation designated by the user or a fresh conversation appropriate to this project. Keep at most one in-flight request per conversation. If another review is pending in that conversation, wait for its matching result or use a separate conversation with the complete brief.
+3. Verify the intended account/session, target repository, conversation, and visible GitHub Connector availability before asking ChatGPT to act. Read the accessibility state, identify the current composer element, and paste the task message into it with `tab.paste(composerIndex, message, {format: "text"})`. Submit with `tab.pressKey(composerIndex, "Return")` or click the visible send control. If no accessible composer is exposed, use a fresh screenshot and visible UI coordinates. After each UI action, call `tab.getAXState()` before deciding what to do next; rediscover element indexes instead of reusing stale ones. Verify that the submitted user message appears in the conversation, then wait for and verify the matching assistant reply. Do not treat a queued message or an unrelated turn as completion.
+4. Verify from the visible ChatGPT interaction that the GitHub Connector was actually invoked for repository inspection or issue creation. If the connector is unavailable, the wrong conversation is open, or the UI send/read-back cannot be verified, report the handoff as pending and provide the ready-to-send message. Do not claim a dispatch or connector action that was not observed.
+
+For a daily planning request, ask ChatGPT to inspect the target repository and its open issues, identify one high-value task that fits the user’s context, check for duplicates, and explain its evidence, scope, acceptance criteria, risks, and dependencies. For a user-supplied question, include it faithfully and ask ChatGPT to answer it in the context of the target repository.
+
+For a full cycle, ask ChatGPT to create one issue in the **target project repository** after selecting a concrete task. The issue should state the problem, bounded scope, acceptance criteria, relevant evidence, and material risks. Ask for the issue URL and confirm the Connector created it in the intended repository. If a duplicate exists, reuse or update that issue instead of opening a duplicate. If ChatGPT cannot create the issue, stop before implementation and report the blocker; do not silently create a different issue in the skill-feedback repository.
+
+## 3. Implement the target-project issue
+
+1. Read the resulting issue from the target repository. Confirm that its title, repository, scope, and acceptance criteria match the ChatGPT plan and the user’s request. Stop if the issue is in the wrong repository, duplicates existing work, or materially expands the agreed scope.
+2. Inspect the current checkout and repository instructions. Implement the issue on an appropriate branch, preserving unrelated changes. Run the relevant tests and checks for the change; report exactly what ran and what did not.
+3. Push and open or update a PR when needed for ChatGPT to inspect the remote diff. Include enough context to connect the PR to the target issue. Record the PR URL and the exact head SHA after the push. Do not ask ChatGPT to review local changes it cannot see.
+4. For UI or generated-content work, include sanitized rendered evidence and the corresponding candidate text in the PR or an authorized review artifact. Identify the candidate SHA for that evidence. Keep source review and rendered-surface review distinct; ChatGPT must say which evidence it actually inspected.
+
+## 4. Request and correlate the ChatGPT review
+
+Send the review request through the same verified ChatGPT UI path. Ask ChatGPT to use the GitHub Connector on the PR, verify the exact head SHA, inspect the diff and necessary context, and check the acceptance criteria. The response must include:
+
+- Target repository and PR URL.
+- Exact head SHA inspected.
+- `APPROVE`, `REQUEST CHANGES`, or `CANNOT REVIEW`.
+- For each finding: severity, file and line or other precise location, code evidence, impact, and a concrete correction.
+- The number of findings returned and an overflow status: `none` or `additional findings remain`, with a concise severity summary if the response is capped.
+- Which CI or rendered evidence ChatGPT actually inspected, and any material limits on the review.
+
+Codex must match the response’s repository, PR URL, and SHA to the requested review before using its verdict. A missing or mismatched response is `CANNOT REVIEW` for that head. Never borrow a verdict from a neighboring request. If more than three findings remain, ask ChatGPT for the next bounded set before treating the review as complete.
+
+Codex independently checks every finding against the exact diff and relevant tests. Explain evidence for rejected findings. Fix valid findings, rerun relevant checks, push the changes, record the new SHA, and request a new review of that head. A verdict for an earlier SHA expires as soon as the PR head changes.
+
+If the review transport or GitHub Connector is unavailable, leave review status pending and do not merge. Give the user the prepared prompt and the specific missing evidence.
+
+## 5. Merge and report
+
+Merge only when all of the following are true:
+
+- The user’s request authorizes the full implementation and merge loop.
+- ChatGPT returned `APPROVE` for the exact current repository, PR URL, and head SHA using the GitHub Connector.
+- Required CI checks are green and no material findings remain unresolved.
+- The target branch and repository rules permit the merge.
+
+If any condition fails, keep the PR unmerged and state what is missing. After a merge, verify the resulting PR state and merge commit through GitHub. Do not imply deployment or live-client validation from a successful merge.
+
+Report the target issue and PR, the implemented scope, tests run, CI state, ChatGPT’s exact-head verdict, merge state, and any remaining deployment or user-facing validation. Keep local test evidence, GitHub checks, ChatGPT review, merge, deployment, and client validation as separate claims.
+
+## 6. Feed material skill failures back into this project
+
+When the run exposes a material failure in Codex’s workflow, ChatGPT’s behavior, or their handoff, search the open issues in `atomchung/codex-chat-collab` first. Add evidence to an existing issue when it is the same failure mode; otherwise create a sanitized skill-gap issue using the repository’s issue form. Keep observed facts separate from cause hypotheses and include expected behavior, actual behavior, impact, proposed skill change, and verification status.
+
+Do not record a target product defect here unless it demonstrates a gap in this collaboration skill. This repository is public: omit private repository, PR, branch, or commit links; personal or customer data; credentials; raw screenshots; and private transcripts. Keep only the minimum evidence needed to improve the skill. Describe acceptance, rejected findings, duplicates, misses, and rework with context rather than turning raw counts into a score.
+
+## ChatGPT message templates
+
+### Daily project kickoff
+
+> We are working in `<OWNER/REPO>`. Use the GitHub Connector to inspect the repository and its open issues. Find one high-value, in-scope task for today, check for duplicates, and explain the evidence, scope, acceptance criteria, risks, and dependencies. If this is a full-cycle kickoff, create or reuse the issue in this repository and return its URL. Do not claim a connector read or issue write you did not perform.
+
+### User-supplied question
+
+> The user’s question is: `<QUESTION>`. Relevant constraints: `<CONTEXT>`. Use the GitHub Connector to inspect `<OWNER/REPO>` where needed and answer in that project’s context. For a full-cycle request, turn the agreed bounded task into a new or existing issue in this repository and return its URL. State whether the Connector was used.
+
+### Exact-head PR review
+
+> Use the GitHub Connector to review `<PR URL>` in `<OWNER/REPO>`. First verify that its current head is exactly `<SHA>`. Goal and acceptance criteria: `<SUMMARY>`. Inspect the diff and necessary context; inspect the linked rendered evidence when applicable. Return `APPROVE`, `REQUEST CHANGES`, or `CANNOT REVIEW` for that exact head, with precise evidence and actionable findings. Return at most three findings per response, state the total or whether additional findings remain, and summarize the severity of any overflow. Say which CI and rendered evidence you inspected. Do not modify the repository or dispatch another Codex task.

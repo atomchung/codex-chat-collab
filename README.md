@@ -4,7 +4,9 @@ This repository publishes the `codex-chat` skill and collects a public, sanitize
 
 ## The skill
 
-The published skill is [`skills/codex-chat/SKILL.md`](skills/codex-chat/SKILL.md). It describes a Codex-led implementation and verification loop with ChatGPT assisting with planning or independent review.
+The published skill is [`skills/codex-chat/SKILL.md`](skills/codex-chat/SKILL.md). It separates planning-only requests from explicitly authorized full-cycle work. In a full cycle, Codex carries a project question to ChatGPT through the available ChatGPT UI, ChatGPT uses the GitHub Connector to inspect the selected project and create a scoped issue, Codex implements it, and ChatGPT reviews the exact pushed PR head before Codex merges an approved change.
+
+Project work belongs in the selected target repository. Issues in this repository are reserved for defects or gaps in the `codex-chat` skill and its collaboration workflow.
 
 ## What belongs in the issue backlog
 
